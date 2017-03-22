@@ -1,7 +1,9 @@
 import json
 import os
 import sys
+import uuid
 import warnings
+import xmlrpclib
 import zipfile
 from shutil import copyfile
 from xml.etree import ElementTree as xml_et
@@ -25,8 +27,8 @@ APS_CONNECT_PARAMS = ('aps_host', 'aps_port', 'use_tls_aps')
 class APSConnectUtil:
     """A command line tool for creation aps-frontend instance"""
 
-    def init(self, hub_host, user='admin', pwd='1q2w3e', use_tls=False, port=8440, aps_host=None,
-             aps_port=6308, use_tls_aps=True):
+    def init_hub(self, hub_host, user='admin', pwd='1q2w3e', use_tls=False, port=8440,
+                 aps_host=None, aps_port=6308, use_tls_aps=True):
         """ Setup communication with OA Hub"""
         if not aps_host:
             aps_host = hub_host
@@ -54,16 +56,15 @@ class APSConnectUtil:
                                  indent=4))
             print("Config saved [{}]".format(CFG_FILE_PATH))
 
-    def install(self, source, oauth_key, oauth_secret, backend_url, settings_file=None,
-                network='public'):
-        """ Import and install aps-frontend instance, --source can be http(s):// or file://"""
+    def install_frontend(self, source, oauth_key, oauth_secret, backend_url, settings_file=None,
+                         network='public'):
+        """ Import and install connector-frontend instance, --source can be http(s):// or
+        filepath"""
 
         with tempfile.TemporaryDirectory() as tdir:
-            '''Import connector-frontend from source or local path and create instance'''
-            if source.startswith('file://'):
-                package_local_path = source[7:]
-                package_name = os.path.basename(package_local_path)
-                copyfile(package_local_path, os.path.join(tdir, package_name))
+            if not (source.startswith('http://') or source.startswith('https://')):
+                package_name = os.path.basename(source)
+                copyfile(os.path.expanduser(source), os.path.join(tdir, package_name))
             else:
                 package_name = _download_file(source, target=tdir)
             package_path = os.path.join(tdir, package_name)
@@ -85,8 +86,13 @@ class APSConnectUtil:
                 print("Backend url must be in format https://xxx, got {}".format(backend_url))
                 sys.exit(1)
 
-            cfg = _get_cfg()
-            hub = _get_hub()
+            cfg, hub = _get_cfg(), _get_hub()
+
+            with open(package_path, 'rb') as package_binary:
+                print("Importing connector {} {}-{}".format(connector_id, version, release))
+                r = hub.APS.importPackage(package_body=xmlrpclib.Binary(package_binary.read()))
+                print("Connect {} imported with id={}"
+                      .format(connector_id, r['result']['application_id']))
 
             payload = {
                 "aps": {
@@ -113,16 +119,21 @@ class APSConnectUtil:
                         headers=_get_user_token(hub, cfg['user']), verify=False, json=payload)
             try:
                 r.raise_for_status()
-                print(r.json())
                 print("[Success]")
             except Exception as e:
                 if 'error' in r.json():
-                    err = r.json()['message']
+                    err = "{} {}".format(r.json()['error'], r.json()['message'])
                 else:
                     err = str(e)
                 print("Installation of connector {} FAILED.\n"
                       "Hub APS API response {} code.\n"
                       "Error: {}".format(connector_id, r.status_code, err))
+
+    def generate_oauth(self, namespace=''):
+        """ Helper for Oauth credentials generation"""
+        if namespace:
+            namespace += '-'
+        print("OAuh key: {}{}\nSecret: {}".format(namespace, uuid.uuid4().hex, uuid.uuid4().hex))
 
 
 def _get_aps_url(aps_host, aps_port, use_tls_aps):
