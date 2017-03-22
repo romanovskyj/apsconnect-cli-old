@@ -15,17 +15,33 @@ _Package supports python2.7 and python3 versions._
 ### Setup communication with OA Hub
 
 ```
-apsconnect init --hub-host HUB_HOST [--user USER] [--pwd PWD] \
-                [--use-tls USE_TLS] [--port PORT] [--aps-host APS_HOST] \
-                [--aps-port APS_PORT] [--use-tls-aps USE_TLS_APS]
+apsconnect init-hub --hub-host HUB_HOST [--user USER] [--pwd PWD] \
+                    [--use-tls USE_TLS] [--port PORT] [--aps-host APS_HOST] \
+                    [--aps-port APS_PORT] [--use-tls-aps USE_TLS_APS]
 ```
-
+```
+⇒  apsconnect init-hub oa-hub-hostname
+Connectivity with Hub RPC API [ok]
+Hub version oa-7.1-2188
+Connectivity with Hub APS API [ok]
+Config saved [/Users/allexx/.aps_config]
+```
 ### Import and install aps-frontend instance
 
 ```
-apsconnect install --source SOURCE --oauth-key OAUTH_KEY --oauth-secret OAUTH_SECRET \
-				   --backend-url BACKEND_URL [--settings-file SETTINGS_FILE] \
-				   [--network NETWORK]
+apsconnect install-frontend --source SOURCE --oauth-key OAUTH_KEY --oauth-secret OAUTH_SECRET \
+				            --backend-url BACKEND_URL [--settings-file SETTINGS_FILE] \
+				            [--network NETWORK]
 ```
 
-_Note that --source gets http(s):// or file:// argument._
+### Generate Oauth credentials with helper command
+```
+apsconnect generate-oauth [--namespace]
+```
+```
+⇒  apsconnect generate-oauth test
+OAuh key: test-c77e25b1d6974a87b2ff7f58092d6007
+Secret:   14089074ca9a4abd80ba45a19baae693
+```
+
+_Note that --source gets http(s):// or filepath argument._
