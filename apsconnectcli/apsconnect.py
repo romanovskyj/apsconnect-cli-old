@@ -3,7 +3,6 @@ import os
 import sys
 import uuid
 import warnings
-import xmlrpclib
 import zipfile
 from shutil import copyfile
 from xml.etree import ElementTree as xml_et
@@ -14,7 +13,9 @@ from requests import request, get
 
 if sys.version_info >= (3,):
     import tempfile
+    import xmlrpc.client as xmlrpclib
 else:
+    import xmlrpclib
     from backports import tempfile
 
 warnings.filterwarnings('ignore')
@@ -82,8 +83,13 @@ class APSConnectUtil:
             else:
                 settings_file = json.load(open(settings_file))
 
-            if not backend_url.startswith('https://'):
-                print("Backend url must be in format https://xxx, got {}".format(backend_url))
+            if backend_url.startswith('http://'):
+                print("WARN: Make sure that the APS development mode enabled for http backend. "
+                      "See https://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode")
+            elif backend_url.startswith('https://'):
+                pass
+            else:
+                print("Backend url must be URL https(s)://, got {}".format(backend_url))
                 sys.exit(1)
 
             cfg, hub = _get_cfg(), _get_hub()
@@ -91,7 +97,7 @@ class APSConnectUtil:
             with open(package_path, 'rb') as package_binary:
                 print("Importing connector {} {}-{}".format(connector_id, version, release))
                 r = hub.APS.importPackage(package_body=xmlrpclib.Binary(package_binary.read()))
-                print("Connect {} imported with id={}"
+                print("Connector {} imported with id={}"
                       .format(connector_id, r['result']['application_id']))
 
             payload = {
