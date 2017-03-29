@@ -97,6 +97,8 @@ class APSConnectUtil:
             with open(package_path, 'rb') as package_binary:
                 print("Importing connector {} {}-{}".format(connector_id, version, release))
                 r = hub.APS.importPackage(package_body=xmlrpclib.Binary(package_binary.read()))
+                _osaapi_raise_for_status(r)
+
                 print("Connector {} imported with id={}"
                       .format(connector_id, r['result']['application_id']))
 
@@ -148,6 +150,7 @@ def _get_aps_url(aps_host, aps_port, use_tls_aps):
 
 def _get_hub_version(hub):
     r = hub.statistics.getStatisticsReport(reports=[{'name': 'report-for-cep', 'value': ''}])
+    _osaapi_raise_for_status(r)
     tree = xml_et.fromstring(r['result'][0]['value'])
     return tree.find('ClientVersion').text
 
@@ -161,11 +164,20 @@ def _assert_hub_version(hub_version):
 def _get_user_token(hub, user):
     # TODO user -> user_id
     r = hub.APS.getUserToken(user_id=1)
+    _osaapi_raise_for_status(r)
     return {'APS-Token': r['result']['aps_token']}
 
 
 def _get_hub():
     return osaapi.OSA(**{k: _get_cfg()[k] for k in RPC_CONNECT_PARAMS})
+
+
+def _osaapi_raise_for_status(r):
+    if r['status']:
+        if 'error_message' in r:
+            raise Exception("Error: {}".format(r['error_message']))
+        else:
+            raise Exception("Error: Unknown {}".format(r))
 
 
 def _download_file(url, target=None):
@@ -189,7 +201,11 @@ def _get_cfg():
 
 
 def main():
-    fire.Fire(APSConnectUtil, name='apsconnect')
+    try:
+        fire.Fire(APSConnectUtil, name='apsconnect')
+    except Exception as e:
+        print("Error: {}".format(e))
+        sys.exit(1)
 
 
 if __name__ == '__main__':
