@@ -146,7 +146,7 @@ class APSConnectUtil:
     def aps_devel_mode(self, disable=False):
         """ Enable development mode for OA Hub"""
         hub = _get_hub()
-        r = hub.setSystemProperty(account_id=1, name='APS_DEVEL_MODE', bool_value=False)
+        r = hub.setSystemProperty(account_id=1, name='APS_DEVEL_MODE', bool_value=not bool(disable))
         _osaapi_raise_for_status(r)
         print("APS Development mode {}.".format('DISABLED' if disable else 'ENABLED'))
 
