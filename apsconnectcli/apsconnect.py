@@ -151,7 +151,6 @@ class APSConnectUtil:
         print("APS Development mode {}.".format('DISABLED' if disable else 'ENABLED'))
 
 
-
 def _get_aps_url(aps_host, aps_port, use_tls_aps):
     return '{}://{}:{}'.format('https' if use_tls_aps else 'http', aps_host, aps_port)
 
