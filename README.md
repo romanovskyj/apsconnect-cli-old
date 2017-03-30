@@ -45,3 +45,16 @@ Secret:   14089074ca9a4abd80ba45a19baae693
 ```
 
 _Note that --source gets http(s):// or filepath argument._
+
+
+### APS Development mode
+Allows to use non-TLS connect-backend URL and [other features for debug](http://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode).
+```
+⇒ apsconnect aps-devel-mode
+APS Development mode ENABLED
+```
+Disable mode with agument `--disable`
+```
+⇒ apsconnect aps-devel-mode --disable
+APS Development mode DISABLED.
+```
