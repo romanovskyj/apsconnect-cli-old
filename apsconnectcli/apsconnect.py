@@ -85,7 +85,7 @@ class APSConnectUtil:
 
             if backend_url.startswith('http://'):
                 print("WARN: Make sure that the APS development mode enabled for http backend. "
-                      "See https://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode")
+                      "Run `apsconnect aps_devel_mode` command.")
             elif backend_url.startswith('https://'):
                 pass
             else:
@@ -142,6 +142,14 @@ class APSConnectUtil:
         if namespace:
             namespace += '-'
         print("OAuh key: {}{}\nSecret: {}".format(namespace, uuid.uuid4().hex, uuid.uuid4().hex))
+
+    def aps_devel_mode(self, disable=False):
+        """ Enable development mode for OA Hub"""
+        hub = _get_hub()
+        r = hub.setSystemProperty(account_id=1, name='APS_DEVEL_MODE', bool_value=False)
+        _osaapi_raise_for_status(r)
+        print("APS Development mode {}.".format('DISABLED' if disable else 'ENABLED'))
+
 
 
 def _get_aps_url(aps_host, aps_port, use_tls_aps):
