@@ -8,6 +8,11 @@ _A command line tool for creation aps-frontend instance._
 [![Build Status](https://travis-ci.org/hayorov/apsconnect-cli.svg?branch=master)](https://travis-ci.org/hayorov/apsconnect-cli)
 
 ## How to install
+From pypi.python.org
+```
+pip install apsconnectcli
+```
+
 ```
 pip install https://github.com/hayorov/apsconnect-cli/archive/master.zip
 ```
