@@ -3,17 +3,19 @@
 </p>
 
 # apsconnect-cli
-_A command line tool for creation aps-frontend instance._
+_A command line tool for APS Connector management on Odin Automation._
 
 [![Build Status](https://travis-ci.org/hayorov/apsconnect-cli.svg?branch=master)](https://travis-ci.org/hayorov/apsconnect-cli)
 
 ## How to install
-From pypi.python.org
+from Pypi repository (recommended)
 ```
 pip install apsconnectcli
 ```
 
+or last development version (early adopter)
 ```
+
 pip install https://github.com/hayorov/apsconnect-cli/archive/master.zip
 ```
 _Package supports python2.7 and python3 versions._
@@ -55,12 +57,12 @@ _Note that --source gets http(s):// or filepath argument._
 
 
 ### APS Development mode
-Allows to use non-TLS connect-backend URL and [other features for debug](http://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode).
+Allows to use non-TLS connector-backend URL and [other features for debug](http://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode).
 ```
 ⇒ apsconnect aps-devel-mode
 APS Development mode ENABLED
 ```
-Disable mode with agument `--disable`
+Disable mode with `--disable`.
 ```
 ⇒ apsconnect aps-devel-mode --disable
 APS Development mode DISABLED.
