@@ -35,6 +35,37 @@ Hub version oa-7.1-2188
 Connectivity with Hub APS API [ok]
 Config saved [/Users/allexx/.aps_config]
 ```
+### Setup communication with k8s cluster
+
+```
+apsconnect init-cluster --cluster-endpoint CLUSTER_ENDPOINT \
+                        --user USER --pwd PWD --ca-cert CA_CERT_FILE
+```
+```
+⇒  apsconnect init-cluster cluster_endpoint user password ca_cert
+Connectivity with k8s cluster api [ok]
+k8s cluster version - v1.5.6
+Config saved [/Users/allexx/.kube/config]
+```
+### Install connector-backend in k8s cluster
+
+```
+apsconnect install-backend --name NAME --image IMAGE --config-file CONFIG_FILE \
+                          [--healthcheck-path HEALTHCHECK_PATH] [--root-path ROOT_PATH] \
+                          [--namespace NAMESPACE] [--replicas REPLICAS] [--force FORCE]
+```
+```
+⇒  apsconnect install-backend connector_name image config_file
+Loading config file: /Users/allexx/config
+Connected to cluster - https://127.222.183.40
+Create config [ok]
+Create deployment [ok]
+Create service [ok]
+Checking service availability
+.........
+Expose service [ok]
+Connector backend - http://127.197.49.26/
+```
 ### Import and install aps-frontend instance
 
 ```

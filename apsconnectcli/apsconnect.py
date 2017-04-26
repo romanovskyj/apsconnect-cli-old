@@ -1,32 +1,123 @@
+from __future__ import print_function
+
 import json
 import os
 import sys
+import time
+import copy
 import uuid
+import base64
 import warnings
 import zipfile
 from shutil import copyfile
 from xml.etree import ElementTree as xml_et
+from datetime import datetime, timedelta
 
 import fire
+import yaml
 import osaapi
 from requests import request, get
+
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 if sys.version_info >= (3,):
     import tempfile
     import xmlrpc.client as xmlrpclib
+    from tempfile import TemporaryDirectory
 else:
     import xmlrpclib
-    from backports import tempfile
+    import tempfile
+    from backports.tempfile import TemporaryDirectory
 
 warnings.filterwarnings('ignore')
 
 CFG_FILE_PATH = os.path.expanduser('~/.aps_config')
+KUBE_DIR_PATH = os.path.expanduser('~/.kube')
+KUBE_FILE_PATH = '{}/config'.format(KUBE_DIR_PATH)
 RPC_CONNECT_PARAMS = ('host', 'user', 'password', 'ssl', 'port')
 APS_CONNECT_PARAMS = ('aps_host', 'aps_port', 'use_tls_aps')
+AUTH_TEMPLATE = {
+    'apiVersion': 'v1',
+    'clusters': [
+        {
+            'cluster': {
+                'api-version': 'v1',
+                'certificate-authority-data': '{BASE64CERT}',
+                'server': '{ENDPOINT}',
+            },
+            'name': 'cluster',
+        },
+    ],
+    'contexts': [
+        {
+            'context': {
+                'cluster': 'cluster',
+                'user': 'cluster-admin',
+            },
+            'name': 'cluster-context',
+        },
+    ],
+    'current-context': 'cluster-context',
+    'kind': 'Config',
+    'preferences': {},
+    'users': [
+        {
+            'name': 'cluster-admin',
+            'user': {
+                'username': '{USERNAME}',
+                'password': '{PASSWORD}',
+            },
+        },
+    ],
+}
 
 
 class APSConnectUtil:
     """A command line tool for creation aps-frontend instance"""
+
+    def init_cluster(self, cluster_endpoint, user, pwd, ca_cert):
+        """ Setup communication with k8s cluster"""
+        try:
+            with open(ca_cert) as _file:
+                ca_cert_data = base64.b64encode(_file.read().encode())
+        except Exception as e:
+            print("Unable to read ca_cert file, error: {}".format(e))
+            sys.exit(1)
+
+        auth_template = copy.deepcopy(AUTH_TEMPLATE)
+        cluster = auth_template['clusters'][0]['cluster']
+        user_data = auth_template['users'][0]['user']
+
+        cluster['certificate-authority-data'] = ca_cert_data.decode()
+        cluster['server'] = 'https://{}'.format(cluster_endpoint)
+        user_data['username'] = user
+        user_data['password'] = pwd
+
+        _, temp_config = tempfile.mkstemp()
+        with open(temp_config, 'w') as fd:
+            yaml.safe_dump(auth_template, fd)
+
+        try:
+            api_client = _get_k8s_api_client(temp_config)
+            api = client.VersionApi(api_client)
+            code = api.get_code()
+            print("Connectivity with k8s cluster api [ok]")
+            print("k8s cluster version - {}".format(code.git_version))
+        except Exception as e:
+            print("Unable to communicate with k8s cluster {}, error: {}".format(
+                cluster_endpoint, e))
+            sys.exit(1)
+
+        os.remove(temp_config)
+
+        if not os.path.exists(KUBE_DIR_PATH):
+            os.mkdir(KUBE_DIR_PATH)
+            print("Created directory [{}]".format(KUBE_DIR_PATH))
+
+        with open(KUBE_FILE_PATH, 'w+') as fd:
+            yaml.safe_dump(auth_template, fd)
+            print("Config saved [{}]".format(KUBE_FILE_PATH))
 
     def init_hub(self, hub_host, user='admin', pwd='1q2w3e', use_tls=False, port=8440,
                  aps_host=None, aps_port=6308, use_tls_aps=True):
@@ -57,12 +148,70 @@ class APSConnectUtil:
                                  indent=4))
             print("Config saved [{}]".format(CFG_FILE_PATH))
 
+    def install_backend(self, name, image, config_file, healthcheck_path='/',
+                        root_path='/', namespace='default', replicas=2,
+                        force=False):
+        """ Install connector-backend instance in k8s cluster"""
+
+        try:
+            config_data = json.load(open(config_file))
+            print("Loading config file: {}".format(config_file))
+        except Exception as e:
+            print("Unable to read config file, error: {}".format(e))
+            sys.exit(1)
+
+        api_client = _get_k8s_api_client()
+        api = client.VersionApi(api_client)
+        core_v1 = client.CoreV1Api(api_client)
+        ext_v1 = client.ExtensionsV1beta1Api(api_client)
+
+        try:
+            api.get_code()
+            print("Connected to cluster - {}".format(api_client.host))
+        except Exception as e:
+            print("Unable to communicate with k8s cluster, error: {}".format(e))
+            sys.exit(1)
+
+        try:
+            _create_secret(name, config_data, core_v1, namespace, force)
+            print("Create config [ok]")
+        except Exception as e:
+            print("Can't create config in cluster, error: {}".format(e))
+            sys.exit(1)
+
+        try:
+            _create_deployment(name, image, ext_v1, healthcheck_path, replicas,
+                               namespace, force, core_api=core_v1)
+            print("Create deployment [ok]")
+        except Exception as e:
+            print("Can't create deployment in cluster, error: {}".format(e))
+            sys.exit(1)
+
+        try:
+            _create_service(name, core_v1, namespace, force)
+            print("Create service [ok]")
+        except Exception as e:
+            print("Can't create deployment in cluster, error: {}".format(e))
+            sys.exit(1)
+
+        print("Checking service availability")
+
+        try:
+            ip = _polling_service_access(name, core_v1, namespace, timeout=180)
+            print("Expose service [ok]")
+            print("Connector backend - http://{}/{}".format(ip, root_path.lstrip('/')))
+        except Exception as e:
+            print("Service expose FAILED, error: {}".format(e))
+            sys.exit(1)
+
+        print("[Success]")
+
     def install_frontend(self, source, oauth_key, oauth_secret, backend_url, settings_file=None,
                          network='public'):
         """ Import and install connector-frontend instance, --source can be http(s):// or
         filepath"""
 
-        with tempfile.TemporaryDirectory() as tdir:
+        with TemporaryDirectory() as tdir:
             if not (source.startswith('http://') or source.startswith('https://')):
                 package_name = os.path.basename(source)
                 copyfile(os.path.expanduser(source), os.path.join(tdir, package_name))
@@ -89,7 +238,7 @@ class APSConnectUtil:
             elif backend_url.startswith('https://'):
                 pass
             else:
-                print("Backend url must be URL https(s)://, got {}".format(backend_url))
+                print("Backend url must be URL http(s)://, got {}".format(backend_url))
                 sys.exit(1)
 
             cfg, hub = _get_cfg(), _get_hub()
@@ -123,6 +272,7 @@ class APSConnectUtil:
             payload.update(settings_file)
 
             base_aps_url = _get_aps_url(**{k: _get_cfg()[k] for k in APS_CONNECT_PARAMS})
+
             r = request(method='POST', url='{}/{}'.format(base_aps_url, 'aps/2/applications/'),
                         headers=_get_user_token(hub, cfg['user']), verify=False, json=payload)
             try:
@@ -179,6 +329,13 @@ def _get_hub():
     return osaapi.OSA(**{k: _get_cfg()[k] for k in RPC_CONNECT_PARAMS})
 
 
+def _get_k8s_api_client(config_file=None):
+    if not config_file:
+        config_file = KUBE_FILE_PATH
+
+    return config.new_client_from_config(config_file=config_file)
+
+
 def _osaapi_raise_for_status(r):
     if r['status']:
         if 'error_message' in r:
@@ -205,6 +362,220 @@ def _get_cfg():
         print("Run init command.")
         sys.exit(1)
     return cfg
+
+
+def _create_secret(name, data, api, namespace='default', force=False):
+    secret = {
+        'apiVersion': 'v1',
+        'data': {
+            'config.json': base64.b64encode(json.dumps(data).encode('utf-8')).decode(),
+        },
+        'kind': 'Secret',
+        'metadata': {
+            'name': name,
+        },
+        'type': 'Opaque',
+    }
+
+    if force:
+        _delete_secret(name, api, namespace)
+
+    api.create_namespaced_secret(
+        namespace=namespace,
+        body=secret,
+    )
+
+
+def _delete_secret(name, api, namespace):
+    try:
+        api.delete_namespaced_secret(
+            namespace=namespace,
+            body=client.V1DeleteOptions(),
+            name=name,
+        )
+    except ApiException as e:
+        if e.status != 404:
+            raise
+
+
+def _create_deployment(name, image, api, healthcheck_path='/', replicas=2,
+                       namespace='default', force=False, core_api=None):
+    template = {
+        'apiVersion': 'extensions/v1beta1',
+        'kind': 'Deployment',
+        'metadata': {
+            'name': name,
+        },
+        'spec': {
+            'replicas': replicas,
+            'template': {
+                'metadata': {
+                    'labels': {
+                        'name': name,
+                    },
+                },
+                'spec': {
+                    'containers': [
+                        {
+                            'name': name,
+                            'image': image,
+                            'env': [
+                                {
+                                    'name': 'CONFIG_FILE',
+                                    'value': '/config/config.json',
+                                },
+                            ],
+                            'livenessProbe': {
+                                'httpGet': {
+                                    'path': healthcheck_path,
+                                    'port': 80,
+                                },
+                            },
+                            'readinessProbe': {
+                                'httpGet': {
+                                    'path': healthcheck_path,
+                                    'port': 80,
+                                },
+                            },
+                            'ports': [
+                                {
+                                    'containerPort': 80,
+                                    'name': 'http-server',
+                                },
+                            ],
+                            'resources': {
+                                # TODO increase limits by default
+                                'limits': {
+                                    'cpu': '100m',
+                                    'memory': '128Mi',
+                                },
+                            },
+                            'volumeMounts': [
+                                {
+                                    'mountPath': '/config',
+                                    'name': 'config-volume',
+                                },
+                            ],
+                        },
+                    ],
+                    'volumes': [
+                        {
+                            'name': 'config-volume',
+                            'secret': {
+                                'secretName': name,
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+    }
+
+    if force:
+        _delete_deployment(name, api=api, namespace=namespace, core_api=core_api)
+
+    api.create_namespaced_deployment(namespace=namespace, body=template)
+
+
+def _delete_deployment(name, api, namespace, core_api=None):
+    try:
+        api.delete_namespaced_deployment(
+            namespace=namespace,
+            name=name,
+            body=client.V1DeleteOptions(),
+            grace_period_seconds=0,
+        )
+    except ApiException as e:
+        if e.status != 404:
+            raise
+
+    replica_set = api.list_namespaced_replica_set(
+        namespace=namespace,
+        label_selector='name={}'.format(name),
+    )
+
+    if len(replica_set.items):
+        for rs in replica_set.items:
+            rs_name = rs.metadata.name
+            api.delete_namespaced_replica_set(namespace=namespace, name=rs_name,
+                                              body=client.V1DeleteOptions(),
+                                              grace_period_seconds=0)
+
+    pods = core_api.list_namespaced_pod(
+        namespace=namespace,
+        label_selector='name={}'.format(name)
+    )
+    pod_names = [pod.metadata.name for pod in pods.items]
+
+    for name in pod_names:
+        core_api.delete_namespaced_pod(
+            namespace=namespace,
+            name=name,
+            body=client.V1DeleteOptions(),
+            grace_period_seconds=0,
+        )
+
+
+def _create_service(name, api, namespace='default', force=False):
+    service = {
+        'apiVersion': 'v1',
+        'kind': 'Service',
+        'metadata': {
+            'labels': {
+                'name': name,
+            },
+            'name': name,
+        },
+        'spec': {
+            'ports': [
+                {
+                    'port': 80,
+                    'protocol': 'TCP',
+                    'targetPort': 80,
+                }
+            ],
+            'selector': {
+                'name': name
+            },
+            'type': 'LoadBalancer'
+        }
+    }
+
+    if force:
+        _delete_service(name, api, namespace)
+
+    api.create_namespaced_service(namespace=namespace, body=service)
+
+
+def _delete_service(name, api, namespace):
+    try:
+        api.delete_namespaced_service(namespace=namespace, name=name)
+    except ApiException as e:
+        if e.status != 404:
+            raise
+
+
+def _polling_service_access(name, api, namespace, timeout=120):
+    max_time = datetime.now() + timedelta(seconds=timeout)
+
+    while True:
+        try:
+            data = api.read_namespaced_service_status(name=name, namespace=namespace)
+            ingress = data.status.load_balancer.ingress
+
+            if ingress:
+                print()
+                return ingress[0].ip
+
+            sys.stdout.write('.')
+            sys.stdout.flush()
+        except:
+            raise
+
+        if datetime.now() > max_time:
+            raise Exception("Waiting time exceeded")
+
+        time.sleep(10)
 
 
 def main():
