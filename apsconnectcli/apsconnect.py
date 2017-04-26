@@ -74,10 +74,10 @@ AUTH_TEMPLATE = {
 
 
 class APSConnectUtil:
-    """A command line tool for creation aps-frontend instance"""
+    """ A command line tool for APS connector installation on Odin Automation in the relaxed way"""
 
     def init_cluster(self, cluster_endpoint, user, pwd, ca_cert):
-        """ Setup communication with k8s cluster"""
+        """ Connect your kubernetes (k8s) cluster"""
         try:
             with open(ca_cert) as _file:
                 ca_cert_data = base64.b64encode(_file.read().encode())
@@ -121,7 +121,7 @@ class APSConnectUtil:
 
     def init_hub(self, hub_host, user='admin', pwd='1q2w3e', use_tls=False, port=8440,
                  aps_host=None, aps_port=6308, use_tls_aps=True):
-        """ Setup communication with OA Hub"""
+        """ Connect your Odin Automation Hub"""
         if not aps_host:
             aps_host = hub_host
         use_tls = use_tls in ('Yes', 'True', '1')
@@ -151,7 +151,7 @@ class APSConnectUtil:
     def install_backend(self, name, image, config_file, healthcheck_path='/',
                         root_path='/', namespace='default', replicas=2,
                         force=False):
-        """ Install connector-backend instance in k8s cluster"""
+        """ Install connector-backend in the k8s cluster"""
 
         try:
             config_data = json.load(open(config_file))
@@ -208,7 +208,7 @@ class APSConnectUtil:
 
     def install_frontend(self, source, oauth_key, oauth_secret, backend_url, settings_file=None,
                          network='public'):
-        """ Import and install connector-frontend instance, --source can be http(s):// or
+        """ Install connector-frontend in Odin Automation Hub, --source can be http(s):// or
         filepath"""
 
         with TemporaryDirectory() as tdir:

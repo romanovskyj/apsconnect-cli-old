@@ -11,12 +11,13 @@ install_reqs = parse_requirements(os.path.join(os.path.dirname(os.path.abspath(_
 setup(
     name='apsconnectcli',
     author='Alexander Khaerov',
-    version='1.6.0',
+    version='1.6.1',
     keywords='aps apsconnect connector automation',
     extras_require={
         ':python_version<="2.7"': ['backports.tempfile==1.0rc1']},
     packages=['apsconnectcli'],
-    description='A command line tool for APS Connector management on Odin Automation',
+    description='A command line tool for APS connector installation on Odin Automation in '
+                'the relaxed way.',
     url='https://github.com/hayorov/apsconnect-cli',
     license='Apache Software License',
     install_requires=[str(ir.req) for ir in install_reqs],
