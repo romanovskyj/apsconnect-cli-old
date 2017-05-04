@@ -212,11 +212,15 @@ class APSConnectUtil:
         filepath"""
 
         with TemporaryDirectory() as tdir:
-            if not (source.startswith('http://') or source.startswith('https://')):
+            is_http_source = True if source.startswith('http://') or source.startswith('https://') \
+                else False
+
+            if is_http_source:
+                package_name = _download_file(source, target=tdir)
+            else:
                 package_name = os.path.basename(source)
                 copyfile(os.path.expanduser(source), os.path.join(tdir, package_name))
-            else:
-                package_name = _download_file(source, target=tdir)
+
             package_path = os.path.join(tdir, package_name)
             with zipfile.ZipFile(package_path, 'r') as zip_ref:
                 meta_path = zip_ref.extract('APP-META.xml', path=tdir)
@@ -245,7 +249,9 @@ class APSConnectUtil:
 
             with open(package_path, 'rb') as package_binary:
                 print("Importing connector {} {}-{}".format(connector_id, version, release))
-                r = hub.APS.importPackage(package_body=xmlrpclib.Binary(package_binary.read()))
+                import_kwargs = {'package_url': source} if is_http_source \
+                    else {'package_body': xmlrpclib.Binary(package_binary.read())}
+                r = hub.APS.importPackage(**import_kwargs)
                 _osaapi_raise_for_status(r)
 
                 print("Connector {} imported with id={}"
