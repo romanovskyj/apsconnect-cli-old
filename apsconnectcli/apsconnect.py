@@ -224,12 +224,14 @@ class APSConnectUtil:
             package_path = os.path.join(tdir, package_name)
             with zipfile.ZipFile(package_path, 'r') as zip_ref:
                 meta_path = zip_ref.extract('APP-META.xml', path=tdir)
+                tenant_schema_path = zip_ref.extract('schemas/tenant.schema', tdir)
 
             tree = xml_et.ElementTree(file=meta_path)
             namespace = '{http://aps-standard.org/ns/2}'
             connector_id = tree.find('{}id'.format(namespace)).text
             version = tree.find('{}version'.format(namespace)).text
             release = tree.find('{}release'.format(namespace)).text
+            connector_name = tree.find('{}name'.format(namespace)).text
 
             if not settings_file:
                 settings_file = {}
@@ -254,8 +256,10 @@ class APSConnectUtil:
                 r = hub.APS.importPackage(**import_kwargs)
                 _osaapi_raise_for_status(r)
 
+                application_id = str(r['result']['application_id'])
+
                 print("Connector {} imported with id={}"
-                      .format(connector_id, r['result']['application_id']))
+                      .format(connector_id, application_id))
 
             payload = {
                 "aps": {
@@ -283,7 +287,6 @@ class APSConnectUtil:
                         headers=_get_user_token(hub, cfg['user']), verify=False, json=payload)
             try:
                 r.raise_for_status()
-                print("[Success]")
             except Exception as e:
                 if 'error' in r.json():
                     err = "{} {}".format(r.json()['error'], r.json()['message'])
@@ -292,6 +295,109 @@ class APSConnectUtil:
                 print("Installation of connector {} FAILED.\n"
                       "Hub APS API response {} code.\n"
                       "Error: {}".format(connector_id, r.status_code, err))
+
+            # Create app, tenant, users resource types
+            resource_uid = json.loads(r.content)['app']['aps']['id']
+
+            core_resource_types_payload = [
+                {
+                    "resclass_name": "rc.saas.service.link",
+                    "name": connector_name,
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'resource_uid',
+                            'var_value': resource_uid
+                        },
+                    ]
+                },
+                {
+                    "resclass_name": "rc.saas.service",
+                    "name": "{} tenant".format(connector_name),
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'service_id',
+                            'var_value': "tenant"
+                        },
+                        {
+                            'var_name': 'autoprovide_service',
+                            'var_value': "1"
+                        },
+                    ]
+                },
+                {
+                    "resclass_name": "rc.saas.service",
+                    "name": "{} users".format(connector_name),
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'service_id',
+                            'var_value': "user"
+                        },
+                        {
+                            'var_name': 'autoprovide_service',
+                            'var_value': "0"
+                        },
+                    ]
+                },
+            ]
+
+            # Collect ids for service template creation
+            resource_types_ids = []
+
+            for type in core_resource_types_payload:
+                response = hub.addResourceType(**type)
+                resource_types_ids.append(response['result']['resource_type_id'])
+
+            # Create counters resource types
+            counters = _get_counters(tenant_schema_path)
+
+            for counter in counters:
+                payload = {
+                    "resclass_name": "rc.saas.resource.unit",
+                    "name": "{} {}".format(connector_name, counter),
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'service_id',
+                            'var_value': "tenant"
+                        },
+                        {
+                            'var_name': 'resource_id',
+                            'var_value': counter
+                        },
+                    ]
+                }
+                response = hub.addResourceType(**payload)
+                resource_types_ids.append(response['result']['resource_type_id'])
+
+            print("Resource types has been created")
+
+        # Create service template
+        payload = {
+            'name': connector_name,
+            'owner_id': 1,
+            'resources': []
+        }
+
+        for id in resource_types_ids:
+            payload['resources'].append({'resource_type_id': id})
+
+        hub.addServiceTemplate(**payload)
+        print("Service template has been created\n[Success]")
 
     def generate_oauth(self, namespace=''):
         """ Helper for Oauth credentials generation"""
@@ -582,6 +688,19 @@ def _polling_service_access(name, api, namespace, timeout=120):
             raise Exception("Waiting time exceeded")
 
         time.sleep(10)
+
+
+def _get_counters(tenant_schema_path):
+    with open(tenant_schema_path) as tenant_file:
+        counter_type = 'http://aps-standard.org/types/core/resource/1.0#Counter'
+        tenant_properties = json.load(tenant_file)['properties']
+
+        counters = {}
+        for key in tenant_properties:
+            if tenant_properties[key]['type'] == counter_type:
+                counters[key] = (tenant_properties[key])
+
+        return counters
 
 
 def main():
