@@ -381,6 +381,7 @@ class APSConnectUtil:
                         },
                     ]
                 }
+
                 response = hub.addResourceType(**payload)
                 resource_types_ids.append(response['result']['resource_type_id'])
 
