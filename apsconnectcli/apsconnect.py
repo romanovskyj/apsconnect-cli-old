@@ -258,7 +258,7 @@ class APSConnectUtil:
 
                 application_id = str(response['result']['application_id'])
 
-                print("Connector {} imported with id={}"
+                print("Connector {} imported with id={} [ok]"
                       .format(connector_id, application_id))
 
             payload = {
@@ -404,7 +404,9 @@ class APSConnectUtil:
 
         response = hub.addServiceTemplate(**payload)
         _osaapi_raise_for_status(response)
-        print("Service template creation [ok]\n[Success]")
+        service_template_id = response['result']['st_id']
+        print("Service \"{}\" created with id={} [ok]\n[Success]".format(connector_name,
+                                                                         service_template_id))
 
     def generate_oauth(self, namespace=''):
         """ Helper for Oauth credentials generation"""
