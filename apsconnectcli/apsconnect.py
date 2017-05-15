@@ -132,8 +132,8 @@ class APSConnectUtil:
             _assert_hub_version(hub_version)
             print("Hub version {}".format(hub_version))
             response = request('GET', '{}/{}'.format(_get_aps_url(aps_host, aps_port, use_tls_aps),
-                                              'aps/2/applications/'),
-                        headers=_get_user_token(hub, user), verify=False)
+                                                     'aps/2/applications/'),
+                               headers=_get_user_token(hub, user), verify=False)
             response.raise_for_status()
             print("Connectivity with Hub APS API [ok]")
 
