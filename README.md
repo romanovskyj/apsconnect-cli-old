@@ -38,9 +38,9 @@ apsconnect init-hub --hub-host HUB_HOST [--user USER] [--pwd PWD] \
 ```
 ```
 ⇒  apsconnect init-hub oa-hub-hostname
-Connectivity with Hub RPC API [ok]
+Connectivity with hub RPC API [ok]
 Hub version oa-7.1-2188
-Connectivity with Hub APS API [ok]
+Connectivity with hub APS API [ok]
 Config saved [/Users/allexx/.aps_config]
 ```
 
@@ -71,6 +71,13 @@ apsconnect install-frontend --source SOURCE --oauth-key OAUTH_KEY --oauth-secret
 				            --backend-url BACKEND_URL [--settings-file SETTINGS_FILE] \
 				            [--network NETWORK]
 ```
+```
+⇒  apsconnect install-frontend package.aps.zip application-3-v1-687fd3e99eb 639a0c2bf3ab461aaf74a5c622d1fa34 --backend-url http://127.197.49.26/
+Importing connector http://aps.odin.com/app/connector
+Connector http://aps.odin.com/app/connector imported with id=206 [ok]
+Resource types creation [ok]
+Service template "connector" created with id=16 [ok]
+```
 
 ## Misc
 
@@ -88,7 +95,7 @@ _Note that --source gets http(s):// or filepath argument._
 
 
 #### Enable APS Development mode
-Allows to use non-TLS connector-backend URL and [other features for debug](http://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode).
+Allows using non-TLS connector-backend URL and [other features for debug](http://doc.apsstandard.org/2.2/process/test/tools/mn/#development-mode).
 ```
 ⇒ apsconnect aps-devel-mode
 APS Development mode ENABLED
