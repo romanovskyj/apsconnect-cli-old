@@ -74,10 +74,9 @@ apsconnect install-frontend --source SOURCE --oauth-key OAUTH_KEY --oauth-secret
 ```
 ⇒  apsconnect install-frontend package.aps.zip application-3-v1-687fd3e99eb 639a0c2bf3ab461aaf74a5c622d1fa34 --backend-url http://127.197.49.26/
 Importing connector http://aps.odin.com/app/connector
-Connector http://aps.odin.com/app/connector imported with id=202
+Connector http://aps.odin.com/app/connector imported with id=206 [ok]
 Resource types creation [ok]
-Service template creation [ok]
-[Success]
+Service template "connector" created with id=16 [ok]
 ```
 
 ## Misc

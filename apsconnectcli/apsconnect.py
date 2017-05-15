@@ -405,7 +405,7 @@ class APSConnectUtil:
         response = hub.addServiceTemplate(**payload)
         _osaapi_raise_for_status(response)
         service_template_id = response['result']['st_id']
-        print("Service \"{}\" created with id={} [ok]\n[Success]".format(connector_name,
+        print("Service template \"{}\" created with id={} [ok]".format(connector_name,
                                                                          service_template_id))
 
     def generate_oauth(self, namespace=''):
