@@ -9,6 +9,7 @@ import uuid
 import base64
 import warnings
 import zipfile
+from future.moves.urllib.parse import urlparse
 from shutil import copyfile
 from xml.etree import ElementTree as xml_et
 from datetime import datetime, timedelta
@@ -231,7 +232,10 @@ class APSConnectUtil:
             connector_id = tree.find('{}id'.format(namespace)).text
             version = tree.find('{}version'.format(namespace)).text
             release = tree.find('{}release'.format(namespace)).text
-            connector_name = tree.find('{}name'.format(namespace)).text
+
+            # Get connector name from id as <name> field may not be unique
+            url_path = urlparse(connector_id).path
+            connector_name = os.path.split(url_path)[-1]
 
             if not settings_file:
                 settings_file = {}
