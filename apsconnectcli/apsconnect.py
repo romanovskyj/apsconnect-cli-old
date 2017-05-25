@@ -354,21 +354,21 @@ class APSConnectUtil:
 
             user_resource_type_payload = {
                 'resclass_name': 'rc.saas.service',
-                 'name': '{} users'.format(connector_name),
-                 'act_params': [
-                     {
-                         'var_name': 'app_id',
-                         'var_value': application_id
-                     },
-                     {
-                         'var_name': 'service_id',
-                         'var_value': 'user'
-                     },
-                     {
-                         'var_name': 'autoprovide_service',
-                         'var_value': '0'
-                     },
-                 ]
+                'name': '{} users'.format(connector_name),
+                'act_params': [
+                    {
+                        'var_name': 'app_id',
+                        'var_value': application_id
+                    },
+                    {
+                        'var_name': 'service_id',
+                        'var_value': 'user'
+                    },
+                    {
+                        'var_name': 'autoprovide_service',
+                        'var_value': '0'
+                    },
+                ]
             }
 
             response = hub.addResourceType(**user_resource_type_payload)
