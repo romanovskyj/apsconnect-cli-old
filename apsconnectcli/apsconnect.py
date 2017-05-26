@@ -343,14 +343,14 @@ class APSConnectUtil:
 
             # Collect ids for service template creation
             resource_types_ids = []
-            limited_resources_ids = []
 
             for type in core_resource_types_payload:
                 response = hub.addResourceType(**type)
                 _osaapi_raise_for_status(response)
 
                 resource_types_ids.append(response['result']['resource_type_id'])
-                limited_resources_ids.append(response['result']['resource_type_id'])
+
+            limited_resources_ids = list(resource_types_ids)
 
             user_resource_type_payload = {
                 'resclass_name': 'rc.saas.service',
