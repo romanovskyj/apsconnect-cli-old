@@ -155,8 +155,11 @@ class APSConnectUtil:
         """ Install connector-backend in the k8s cluster"""
 
         try:
-            config_data = json.load(open(config_file))
+            config_data = yaml.load(open(config_file))
             print("Loading config file: {}".format(config_file))
+        except yaml.YAMLError as e:
+            print('Config file should be valid JSON or YAML, error: {}'.format(e))
+
         except Exception as e:
             print("Unable to read config file, error: {}".format(e))
             sys.exit(1)
@@ -515,7 +518,7 @@ def _create_secret(name, data, api, namespace='default', force=False):
     secret = {
         'apiVersion': 'v1',
         'data': {
-            'config.json': base64.b64encode(json.dumps(data).encode('utf-8')).decode(),
+            'config': base64.b64encode(json.dumps(data).encode('utf-8')).decode(),
         },
         'kind': 'Secret',
         'metadata': {
@@ -569,7 +572,7 @@ def _create_deployment(name, image, api, healthcheck_path='/', replicas=2,
                             'env': [
                                 {
                                     'name': 'CONFIG_FILE',
-                                    'value': '/config/config.json',
+                                    'value': '/config/config',
                                 },
                             ],
                             'livenessProbe': {
