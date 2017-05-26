@@ -339,24 +339,6 @@ class APSConnectUtil:
                         },
                     ]
                 },
-                {
-                    'resclass_name': 'rc.saas.service',
-                    'name': '{} users'.format(connector_name),
-                    'act_params': [
-                        {
-                            'var_name': 'app_id',
-                            'var_value': application_id
-                        },
-                        {
-                            'var_name': 'service_id',
-                            'var_value': 'user'
-                        },
-                        {
-                            'var_name': 'autoprovide_service',
-                            'var_value': '0'
-                        },
-                    ]
-                },
             ]
 
             # Collect ids for service template creation
@@ -365,7 +347,34 @@ class APSConnectUtil:
             for type in core_resource_types_payload:
                 response = hub.addResourceType(**type)
                 _osaapi_raise_for_status(response)
+
                 resource_types_ids.append(response['result']['resource_type_id'])
+
+            limited_resources_ids = list(resource_types_ids)
+
+            user_resource_type_payload = {
+                'resclass_name': 'rc.saas.service',
+                'name': '{} users'.format(connector_name),
+                'act_params': [
+                    {
+                        'var_name': 'app_id',
+                        'var_value': application_id
+                    },
+                    {
+                        'var_name': 'service_id',
+                        'var_value': 'user'
+                    },
+                    {
+                        'var_name': 'autoprovide_service',
+                        'var_value': '0'
+                    },
+                ]
+            }
+
+            response = hub.addResourceType(**user_resource_type_payload)
+            _osaapi_raise_for_status(response)
+
+            resource_types_ids.append(response['result']['resource_type_id'])
 
             # Create counters resource types
             counters = _get_counters(tenant_schema_path)
@@ -400,7 +409,7 @@ class APSConnectUtil:
         payload = {
             'name': connector_name,
             'owner_id': 1,
-            'resources': []
+            'resources': [],
         }
 
         for type_id in resource_types_ids:
@@ -411,6 +420,19 @@ class APSConnectUtil:
         service_template_id = response['result']['st_id']
         print("Service template \"{}\" created with id={} [ok]".format(connector_name,
                                                                        service_template_id))
+
+        # Set up limits
+        payload = {
+            'st_id': service_template_id,
+            'limits': [],
+        }
+
+        for type_id in limited_resources_ids:
+            payload['limits'].append({'resource_id': type_id, 'resource_limit64': '1'})
+
+        response = hub.setSTRTLimits(**payload)
+        _osaapi_raise_for_status(response)
+        print("Limits for Service template \"{}\" are applied [ok]".format(service_template_id))
 
     def generate_oauth(self, namespace=''):
         """ Helper for Oauth credentials generation"""
