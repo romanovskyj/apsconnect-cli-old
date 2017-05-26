@@ -155,8 +155,11 @@ class APSConnectUtil:
         """ Install connector-backend in the k8s cluster"""
 
         try:
-            config_data = json.load(open(config_file))
+            config_data = yaml.load(open(config_file))
             print("Loading config file: {}".format(config_file))
+        except yaml.YAMLError as e:
+            print('Config file should be valid JSON or YAML, error: {}'.format(e))
+
         except Exception as e:
             print("Unable to read config file, error: {}".format(e))
             sys.exit(1)
