@@ -518,7 +518,7 @@ def _create_secret(name, data, api, namespace='default', force=False):
     secret = {
         'apiVersion': 'v1',
         'data': {
-            'config.json': base64.b64encode(json.dumps(data).encode('utf-8')).decode(),
+            'config': base64.b64encode(json.dumps(data).encode('utf-8')).decode(),
         },
         'kind': 'Secret',
         'metadata': {
@@ -572,7 +572,7 @@ def _create_deployment(name, image, api, healthcheck_path='/', replicas=2,
                             'env': [
                                 {
                                     'name': 'CONFIG_FILE',
-                                    'value': '/config/config.json',
+                                    'value': '/config/config',
                                 },
                             ],
                             'livenessProbe': {
