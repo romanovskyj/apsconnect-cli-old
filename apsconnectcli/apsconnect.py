@@ -9,6 +9,7 @@ import uuid
 import base64
 import warnings
 import zipfile
+from future.moves.urllib.parse import urlparse
 from shutil import copyfile
 from xml.etree import ElementTree as xml_et
 from datetime import datetime, timedelta
@@ -131,10 +132,10 @@ class APSConnectUtil:
             print("Connectivity with Hub RPC API [ok]")
             _assert_hub_version(hub_version)
             print("Hub version {}".format(hub_version))
-            r = request('GET', '{}/{}'.format(_get_aps_url(aps_host, aps_port, use_tls_aps),
-                                              'aps/2/applications/'),
-                        headers=_get_user_token(hub, user), verify=False)
-            r.raise_for_status()
+            response = request('GET', '{}/{}'.format(_get_aps_url(aps_host, aps_port, use_tls_aps),
+                                                     'aps/2/applications/'),
+                               headers=_get_user_token(hub, user), verify=False)
+            response.raise_for_status()
             print("Connectivity with Hub APS API [ok]")
 
         except Exception as e:
@@ -224,12 +225,17 @@ class APSConnectUtil:
             package_path = os.path.join(tdir, package_name)
             with zipfile.ZipFile(package_path, 'r') as zip_ref:
                 meta_path = zip_ref.extract('APP-META.xml', path=tdir)
+                tenant_schema_path = zip_ref.extract('schemas/tenant.schema', tdir)
 
             tree = xml_et.ElementTree(file=meta_path)
             namespace = '{http://aps-standard.org/ns/2}'
             connector_id = tree.find('{}id'.format(namespace)).text
             version = tree.find('{}version'.format(namespace)).text
             release = tree.find('{}release'.format(namespace)).text
+
+            # Get connector name from id as <name> field may not be unique
+            url_path = urlparse(connector_id).path
+            connector_name = os.path.split(url_path)[-1]
 
             if not settings_file:
                 settings_file = {}
@@ -251,25 +257,27 @@ class APSConnectUtil:
                 print("Importing connector {} {}-{}".format(connector_id, version, release))
                 import_kwargs = {'package_url': source} if is_http_source \
                     else {'package_body': xmlrpclib.Binary(package_binary.read())}
-                r = hub.APS.importPackage(**import_kwargs)
-                _osaapi_raise_for_status(r)
+                response = hub.APS.importPackage(**import_kwargs)
+                _osaapi_raise_for_status(response)
 
-                print("Connector {} imported with id={}"
-                      .format(connector_id, r['result']['application_id']))
+                application_id = str(response['result']['application_id'])
+
+                print("Connector {} imported with id={} [ok]"
+                      .format(connector_id, application_id))
 
             payload = {
-                "aps": {
-                    "package": {
-                        "type": connector_id,
-                        "version": version,
-                        "release": release,
+                'aps': {
+                    'package': {
+                        'type': connector_id,
+                        'version': version,
+                        'release': release,
                     },
-                    "endpoint": backend_url,
-                    "network": network,
-                    "auth": {
-                        "oauth": {
-                            "key": oauth_key,
-                            "secret": oauth_secret,
+                    'endpoint': backend_url,
+                    'network': network,
+                    'auth': {
+                        'oauth': {
+                            'key': oauth_key,
+                            'secret': oauth_secret,
                         }
                     }
                 }
@@ -279,19 +287,152 @@ class APSConnectUtil:
 
             base_aps_url = _get_aps_url(**{k: _get_cfg()[k] for k in APS_CONNECT_PARAMS})
 
-            r = request(method='POST', url='{}/{}'.format(base_aps_url, 'aps/2/applications/'),
-                        headers=_get_user_token(hub, cfg['user']), verify=False, json=payload)
+            response = request(
+                method='POST',
+                url='{}/{}'.format(base_aps_url, 'aps/2/applications/'),
+                headers=_get_user_token(hub, cfg['user']), verify=False, json=payload
+            )
             try:
-                r.raise_for_status()
-                print("[Success]")
+                response.raise_for_status()
             except Exception as e:
-                if 'error' in r.json():
-                    err = "{} {}".format(r.json()['error'], r.json()['message'])
+                if 'error' in response.json():
+                    err = "{} {}".format(response.json()['error'], response.json()['message'])
                 else:
                     err = str(e)
                 print("Installation of connector {} FAILED.\n"
                       "Hub APS API response {} code.\n"
-                      "Error: {}".format(connector_id, r.status_code, err))
+                      "Error: {}".format(connector_id, response.status_code, err))
+
+            # Create app, tenant, users resource types
+            resource_uid = json.loads(response.content)['app']['aps']['id']
+
+            core_resource_types_payload = [
+                {
+                    'resclass_name': 'rc.saas.service.link',
+                    'name': connector_name,
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'resource_uid',
+                            'var_value': resource_uid
+                        },
+                    ]
+                },
+                {
+                    'resclass_name': 'rc.saas.service',
+                    'name': '{} tenant'.format(connector_name),
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'service_id',
+                            'var_value': 'tenant'
+                        },
+                        {
+                            'var_name': 'autoprovide_service',
+                            'var_value': '1'
+                        },
+                    ]
+                },
+            ]
+
+            # Collect ids for service template creation
+            resource_types_ids = []
+
+            for type in core_resource_types_payload:
+                response = hub.addResourceType(**type)
+                _osaapi_raise_for_status(response)
+
+                resource_types_ids.append(response['result']['resource_type_id'])
+
+            limited_resources_ids = list(resource_types_ids)
+
+            user_resource_type_payload = {
+                'resclass_name': 'rc.saas.service',
+                'name': '{} users'.format(connector_name),
+                'act_params': [
+                    {
+                        'var_name': 'app_id',
+                        'var_value': application_id
+                    },
+                    {
+                        'var_name': 'service_id',
+                        'var_value': 'user'
+                    },
+                    {
+                        'var_name': 'autoprovide_service',
+                        'var_value': '0'
+                    },
+                ]
+            }
+
+            response = hub.addResourceType(**user_resource_type_payload)
+            _osaapi_raise_for_status(response)
+
+            resource_types_ids.append(response['result']['resource_type_id'])
+
+            # Create counters resource types
+            counters = _get_counters(tenant_schema_path)
+
+            for counter in counters:
+                payload = {
+                    'resclass_name': "rc.saas.resource.unit",
+                    'name': '{} {}'.format(connector_name, counter),
+                    'act_params': [
+                        {
+                            'var_name': 'app_id',
+                            'var_value': application_id
+                        },
+                        {
+                            'var_name': 'service_id',
+                            'var_value': "tenant"
+                        },
+                        {
+                            'var_name': 'resource_id',
+                            'var_value': counter
+                        },
+                    ]
+                }
+
+                response = hub.addResourceType(**payload)
+                _osaapi_raise_for_status(response)
+                resource_types_ids.append(response['result']['resource_type_id'])
+
+            print("Resource types creation [ok]")
+
+        # Create service template
+        payload = {
+            'name': connector_name,
+            'owner_id': 1,
+            'resources': [],
+        }
+
+        for type_id in resource_types_ids:
+            payload['resources'].append({'resource_type_id': type_id})
+
+        response = hub.addServiceTemplate(**payload)
+        _osaapi_raise_for_status(response)
+        service_template_id = response['result']['st_id']
+        print("Service template \"{}\" created with id={} [ok]".format(connector_name,
+                                                                       service_template_id))
+
+        # Set up limits
+        payload = {
+            'st_id': service_template_id,
+            'limits': [],
+        }
+
+        for type_id in limited_resources_ids:
+            payload['limits'].append({'resource_id': type_id, 'resource_limit64': '1'})
+
+        response = hub.setSTRTLimits(**payload)
+        _osaapi_raise_for_status(response)
+        print("Limits for Service template \"{}\" are applied [ok]".format(service_template_id))
 
     def generate_oauth(self, namespace=''):
         """ Helper for Oauth credentials generation"""
@@ -582,6 +723,24 @@ def _polling_service_access(name, api, namespace, timeout=120):
             raise Exception("Waiting time exceeded")
 
         time.sleep(10)
+
+
+def _get_counters(tenant_schema_path):
+    with open(tenant_schema_path) as tenant_file:
+        counter_type = 'http://aps-standard.org/types/core/resource/1.0#Counter'
+
+        try:
+            tenant_properties = json.load(tenant_file)['properties']
+        except ValueError:
+            print("Tenant schema is not correct json file")
+            sys.exit(1)
+
+        counters = {}
+        for key in tenant_properties:
+            if tenant_properties[key]['type'] == counter_type:
+                counters[key] = (tenant_properties[key])
+
+        return counters
 
 
 def main():
