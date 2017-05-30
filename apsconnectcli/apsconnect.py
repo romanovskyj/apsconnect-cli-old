@@ -307,7 +307,7 @@ class APSConnectUtil:
                       "Error: {}".format(connector_id, response.status_code, err))
 
             # Create app, tenant, users resource types
-            resource_uid = json.loads(response.content)['app']['aps']['id']
+            resource_uid = json.loads(response.content.decode('utf-8'))['app']['aps']['id']
 
             core_resource_types_payload = [
                 {
